@@ -80,3 +80,22 @@ export const notificationsApi = {
   readAll: () => api.put('/api/notifications/read-all'),
   read: (id: string) => api.put(`/api/notifications/${id}/read`),
 };
+
+// --- Places (Slice 1) ---
+export const placesApi = {
+  list: (params?: { q?: string; tag?: string }) => api.get('/api/places', { params }),
+  get: (id: string) => api.get(`/api/places/${id}`),
+  create: (data: unknown) => api.post('/api/places', data),
+  importUrl: (data: { url: string; hint?: unknown }) => api.post('/api/places/import-url', data),
+  update: (id: string, data: unknown) => api.put(`/api/places/${id}`, data),
+  delete: (id: string) => api.delete(`/api/places/${id}`),
+};
+
+export const placeNotesApi = {
+  list: (placeId: string) => api.get(`/api/places/${placeId}/notes`),
+  create: (placeId: string, data: { body: string; sourceUrl?: string }) =>
+    api.post(`/api/places/${placeId}/notes`, data),
+  update: (noteId: string, data: { body?: string; sourceUrl?: string }) =>
+    api.put(`/api/places/notes/${noteId}`, data),
+  delete: (noteId: string) => api.delete(`/api/places/notes/${noteId}`),
+};

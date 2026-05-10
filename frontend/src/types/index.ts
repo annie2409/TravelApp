@@ -101,3 +101,53 @@ export interface PlaceResult {
   lat: number;
   lng: number;
 }
+
+export interface OpeningHourPeriod {
+  weekday: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+  open: string;   // 'HH:mm'
+  close: string;  // 'HH:mm'
+}
+
+export interface SeasonRange {
+  start: string;  // 'MM-DD'
+  end: string;    // 'MM-DD'
+  label?: string;
+}
+
+export interface Tag {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface PlaceNote {
+  id: string;
+  placeId: string;
+  userId: string;
+  body: string;
+  sourceUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Place {
+  id: string;
+  userId: string;
+  googlePlaceId?: string | null;
+  name: string;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  category?: string | null;
+  openingHours?: OpeningHourPeriod[] | null;
+  hoursOverride: boolean;
+  seasonWindow?: SeasonRange[] | null;
+  importSourceUrl?: string | null;
+  dedupeKey: string;
+  createdAt: string;
+  updatedAt: string;
+  tags?: { tag: Tag }[];
+  notes?: PlaceNote[];
+  _count?: { notes: number };
+}

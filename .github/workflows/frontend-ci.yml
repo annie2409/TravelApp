@@ -1,0 +1,174 @@
+name: Frontend CI
+
+# -----------------------------------------------------------------------------
+# Frontend CI — Next.js 14 (App Router) + React 18 + Tailwind
+#
+# Stages (jobs run in this order; tests fan out where independent):
+#   1. lint-and-typecheck   — fast feedback (<60s)
+#   2. unit-tests           — Jest + React Testing Library
+#   3. build                — `next build` (production bundle)
+#   4. docker-build         — Dockerfile build (no push on PR)
+#   5. security             — npm audit + Trivy filesystem scan
+#
+# See /CI_CD.md for the full design rationale and SDLC mapping.
+# -----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: frontend
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  NEXT_PUBLIC_API_URL: http://localhost:4000
+  NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ci-placeholder
+
+jobs:
+  lint-and-typecheck:
+    name: Lint + Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint --if-present
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Test with coverage
+        run: npm test -- --ci --coverage --passWithNoTests
+      - name: Upload unit coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-unit-coverage
+          path: frontend/coverage
+          if-no-files-found: ignore
+
+  build:
+    name: Build (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # Next.js build cache (incremental compile) — keyed by source hashes
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/**/*.[jt]s', 'frontend/**/*.[jt]sx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
+      - run: npm run build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-next
+          path: |
+            frontend/.next
+            !frontend/.next/cache
+          retention-days: 7
+
+  docker-build:
+    name: Docker build (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: wandersync-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+
+      - name: npm audit (advisory on PR, blocking on main)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npm audit --audit-level=high || true
+          else
+            npm audit --audit-level=high
+          fi
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-frontend.sarif
+          exit-code: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - name: Upload Trivy results to GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend.sarif
+          category: trivy-frontend

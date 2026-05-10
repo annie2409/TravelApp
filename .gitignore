@@ -1,0 +1,195 @@
+# =============================================================================
+# WanderSync — root .gitignore (monorepo: backend + frontend + future RN)
+# =============================================================================
+# Conventions:
+#   - Patterns starting with `/` are anchored to the repo root.
+#   - Patterns with `**/` apply at any depth.
+#   - Negations (`!pattern`) preserve files that must stay tracked.
+# =============================================================================
+
+
+# -------------------------------- Node.js ------------------------------------
+**/node_modules/
+**/.pnp
+**/.pnp.js
+**/.yarn/cache/
+**/.yarn/unplugged/
+**/.yarn/build-state.yml
+**/.yarn/install-state.gz
+**/.pnpm-store/
+
+# Lockfiles: KEEP committed. (Negation just for clarity — npm/yarn/pnpm locks.)
+!**/package-lock.json
+!**/yarn.lock
+!**/pnpm-lock.yaml
+
+# Dependency caches & junk
+**/.npm/
+**/.eslintcache
+**/.stylelintcache
+**/.cache/
+**/.parcel-cache/
+
+# Logs
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
+**/*.log
+**/logs/
+
+
+# ---------------------------- TypeScript -------------------------------------
+**/*.tsbuildinfo
+**/.tscache/
+
+
+# ---------------------------- Build output -----------------------------------
+**/dist/
+**/build/
+**/out/
+**/.next/
+**/.nuxt/
+**/.svelte-kit/
+**/.turbo/
+**/.vercel/
+**/.netlify/
+**/.serverless/
+**/storybook-static/
+
+
+# ----------------------------- Testing ---------------------------------------
+**/coverage/
+**/.nyc_output/
+**/junit.xml
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
+
+
+# --------------------------- Env & secrets -----------------------------------
+# Ignore ALL env files...
+**/.env
+**/.env.*
+# ...but KEEP the example templates (so contributors know what to fill in).
+!**/.env.example
+!**/.env.*.example
+!**/.env.sample
+# Common secret stores
+**/*.pem
+**/*.key
+**/secrets/
+**/.secrets/
+
+
+# --------------------------- Prisma ------------------------------------------
+# Generated client lives under node_modules and is already ignored.
+# Never ignore the schema, migrations, or seed scripts.
+
+
+# ---------------------------- Next.js ----------------------------------------
+**/.next/
+**/next-env.d.ts.local
+**/.swc/
+
+
+# ----------------------- React Native (CLI + Expo) ---------------------------
+# Metro bundler & RN cache
+**/.metro-cache/
+**/.metro-health-check*
+**/metro-cache/
+
+# iOS — CocoaPods, Xcode build artefacts, user data
+**/ios/Pods/
+**/ios/build/
+**/ios/Podfile.lock         # If using bare RN you may want this committed; uncomment to keep.
+**/ios/.xcode.env.local
+**/ios/*.xcworkspace/xcuserdata/
+**/ios/*.xcodeproj/xcuserdata/
+**/ios/DerivedData/
+
+# Android — Gradle caches, generated APKs/AABs, local properties
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/local.properties
+**/android/.idea/
+**/android/captures/
+**/*.apk
+**/*.aab
+**/*.ap_
+**/*.dex
+**/*.hprof
+**/*.keystore
+!**/debug.keystore         # Conventional debug keystore stays tracked.
+
+# Hermes / Flipper
+**/*.jsbundle
+**/.hermes/
+
+# Expo
+**/.expo/
+**/.expo-shared/
+**/web-build/
+**/dist-expo/
+
+# EAS Build artefacts
+**/.easignore
+**/eas.json.local
+
+# Fastlane
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots/
+**/fastlane/test_output/
+**/fastlane/README.md
+
+# CocoaPods Detox
+**/derived-data/
+
+
+# ---------------------------- Docker -----------------------------------------
+**/.docker/
+**/docker-compose.override.yml
+
+
+# ----------------------- Editors / IDEs --------------------------------------
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.history/
+.project
+.classpath
+.settings/
+
+
+# --------------------------- OS junk -----------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+
+# ------------------ Auto-iterate planning artefacts --------------------------
+# These directories hold orchestration plans/reviews/evidence per task.
+# Useful locally for reference, but NOT meant to be committed.
+/fl_*/
+
+
+# --------------------------- Misc local --------------------------------------
+*.local
+.tmp/
+.temp/
+tmp_rovodev_*

@@ -11,6 +11,8 @@ import votingRoutes from './routes/voting';
 import notificationRoutes from './routes/notifications';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
+import placesRoutes from './routes/places';
+import placeNotesRoutes from './routes/placeNotes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,6 +36,8 @@ app.use('/api/itinerary', authMiddleware, itineraryRoutes);
 app.use('/api/chat', authMiddleware, chatRoutes);
 app.use('/api/voting', authMiddleware, votingRoutes);
 app.use('/api/notifications', authMiddleware, notificationRoutes);
+app.use('/api/places', authMiddleware, placesRoutes);
+app.use('/api/places', authMiddleware, placeNotesRoutes);
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok' }));

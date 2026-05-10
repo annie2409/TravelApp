@@ -1,0 +1,31 @@
+name: Dependency Review
+
+# -----------------------------------------------------------------------------
+# Reviews dependency changes in PRs against GitHub's Advisory Database
+# AND license policy. Blocks PRs that introduce HIGH/CRITICAL CVEs or
+# disallowed licenses.
+# Docs: https://docs.github.com/code-security/supply-chain-security/understanding-your-software-supply-chain/about-dependency-review
+# -----------------------------------------------------------------------------
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write   # so the action can post a sticky PR comment
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          # Disallow copyleft licences in production code unless explicitly
+          # vetted. Adjust per your legal posture.
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0
+          comment-summary-in-pr: on-failure

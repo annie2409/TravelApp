@@ -1,0 +1,237 @@
+name: Backend CI
+
+# -----------------------------------------------------------------------------
+# Backend CI — Node.js + Express + Prisma + Postgres + Socket.io
+#
+# Stages (jobs run in this order; tests fan out where independent):
+#   1. lint-and-typecheck   — fast feedback (<60s), no DB
+#   2. unit-tests           — Jest with mocked Prisma, no DB
+#   3. integration-tests    — Postgres service container; prisma migrate reset
+#   4. build                — `tsc` to dist
+#   5. docker-build         — Dockerfile build (no push on PR)
+#   6. security             — npm audit + Trivy filesystem scan (PR=warn, main=fail)
+#
+# See /CI_CD.md for the full design rationale and SDLC mapping.
+# -----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+# Cancel superseded runs on the same ref so PRs don't queue.
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Workflow-level least privilege; jobs may request more explicitly.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Fast feedback: lint + typecheck. No DB. Should fail in < 60 s.
+  # -------------------------------------------------------------------------
+  lint-and-typecheck:
+    name: Lint + Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prisma generate (types needed for typecheck)
+        run: npx prisma generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint (optional until ESLint is added)
+        run: npm run lint --if-present
+
+  # -------------------------------------------------------------------------
+  # 2. Unit tests: jest with mocked Prisma. Cheap and parallelisable.
+  # -------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+    env:
+      JWT_SECRET: test-secret-not-for-production
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Run unit tests with coverage
+        # Limit to *.test.ts files outside __tests__/integration (which we
+        # introduce in step 3). Until that split exists, all current tests
+        # are unit tests with mocked prisma.
+        run: npm test -- --ci --coverage --testPathIgnorePatterns="/integration/"
+      - name: Upload unit coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-unit-coverage
+          path: backend/coverage
+          if-no-files-found: ignore
+
+  # -------------------------------------------------------------------------
+  # 3. Integration tests: real Postgres via service container.
+  #    Each job run gets a fresh DB; prisma migrate reset guarantees a
+  #    deterministic schema/data state.
+  # -------------------------------------------------------------------------
+  integration-tests:
+    name: Integration tests (Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint-and-typecheck
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: wandersync_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/wandersync_test
+      JWT_SECRET: test-secret-not-for-production
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Reset DB to a known clean state
+        # Drops/recreates schema then applies all migrations.
+        # Skip seed: integration tests should provision their own fixtures.
+        run: npx prisma migrate reset --force --skip-seed
+      - name: Run integration tests (if any)
+        # Until the team adds tests under src/__tests__/integration/, this
+        # is a no-op (passes via --passWithNoTests). The job still proves
+        # the DB pipeline works end-to-end.
+        run: npm test -- --ci --testPathPattern="/integration/" --passWithNoTests
+
+  # -------------------------------------------------------------------------
+  # 4. Compile TypeScript to dist/. Acts as a release-blocking syntax gate.
+  # -------------------------------------------------------------------------
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [unit-tests, integration-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: backend/dist
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 5. Build Docker image (no push on PR). Validates the production
+  #    Dockerfile and warms the GHA layer cache for the deploy workflow.
+  # -------------------------------------------------------------------------
+  docker-build:
+    name: Docker build (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: wandersync-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------------------------
+  # 6. Security: npm audit + Trivy filesystem scan.
+  #    PR runs are advisory; main runs FAIL on HIGH/CRITICAL.
+  # -------------------------------------------------------------------------
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+    permissions:
+      contents: read
+      security-events: write   # required to upload SARIF to code scanning
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+
+      - name: npm audit (advisory on PR, blocking on main)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npm audit --audit-level=high || true
+          else
+            npm audit --audit-level=high
+          fi
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: backend
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-backend.sarif
+          # PR = surface but don't block; main = fail the job.
+          exit-code: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - name: Upload Trivy results to GitHub code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend

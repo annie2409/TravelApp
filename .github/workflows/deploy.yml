@@ -1,0 +1,132 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      service:
+        description: 'Which service to deploy'
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+          - both
+
+concurrency:
+  group: deploy-${{ inputs.environment }}-${{ inputs.service }}
+  cancel-in-progress: false
+
+# Least-privilege at the workflow level. Jobs that need more
+# (e.g. `id-token: write` for OIDC, `packages: write` for GHCR push)
+# request it explicitly below. See:
+# https://docs.github.com/actions/security-guides/automatic-token-authentication
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      packages: write   # required to push to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - backend
+          - frontend
+    if: ${{ inputs.service == matrix.service || inputs.service == 'both' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # TODO: replace with your registry login (GHCR / ECR / GAR / Docker Hub)
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: tag
+        run: echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          file: ./${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ inputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write   # enable OIDC federation to AWS/GCP/Azure when wired
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── STUB ────────────────────────────────────────────────────────────
+      # Replace this block with your platform's deploy step. Examples:
+      #
+      #   • Fly.io        : superfly/flyctl-actions/setup-flyctl@master
+      #                     run: flyctl deploy --remote-only -a wandersync-${{ inputs.service }}
+      #
+      #   • AWS ECS       : aws-actions/amazon-ecs-deploy-task-definition@v2
+      #
+      #   • Kubernetes    : azure/setup-kubectl@v4 + `kubectl set image …`
+      #
+      #   • Vercel (front): amondnet/vercel-action@v25
+      #
+      # Required secrets are configured per GitHub Environment so that
+      # production deploys can require approvers.
+      # ────────────────────────────────────────────────────────────────────
+      - name: Placeholder deploy
+        run: |
+          echo "Deploying ${{ inputs.service }} to ${{ inputs.environment }}"
+          echo "Image: ghcr.io/${{ github.repository }}/${{ inputs.service }}:${{ github.sha }}"
+          echo "TODO: wire to real platform."
+
+      # ── Post-deploy smoke test (placeholder) ────────────────────────────
+      # Hit a known-good endpoint after deploy to fail fast on bad releases.
+      # Wire to the actual public URL once the platform target is chosen.
+      # Example: curl -fsS --retry 5 --retry-delay 5 "https://api.<env>.wandersync.app/health"
+      - name: Smoke test (placeholder)
+        run: |
+          echo "TODO: replace with: curl -fsS https://api.${{ inputs.environment }}.example.com/health"
+          echo "Smoke test placeholder — succeeds for now."
+
+      # ── Rollback note ───────────────────────────────────────────────────
+      # If smoke test fails, the deploy step above must perform an automatic
+      # rollback (re-deploy the previous image). Most platforms support
+      # this natively (ECS rolling-update with circuit breaker, Fly.io
+      # release strategy, K8s rollout undo). Document the chosen mechanism
+      # here when wiring the real platform.
+      - name: Rollback note
+        if: failure()
+        run: |
+          echo "::warning::Deploy failed. To roll back, re-run this workflow"
+          echo "::warning::with the previous successful image SHA, or invoke"
+          echo "::warning::the platform's native rollback (e.g. 'flyctl releases rollback')."
