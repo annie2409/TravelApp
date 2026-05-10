@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,700&display=swap');
+
+:root {
+  --font-clash: 'Clash Display', serif;
+  --font-satoshi: 'Satoshi', sans-serif;
+
+  /* Theme */
+  --bg-primary: #0d0b09;
+  --bg-secondary: #1a1714;
+  --bg-card: #221e1a;
+  --bg-hover: #2a2520;
+  --border: #3a342e;
+  --border-light: #4a4340;
+  --text-primary: #f5f4f2;
+  --text-secondary: #ada69a;
+  --text-muted: #5f5650;
+  --accent: #c5aa82;
+  --accent-hover: #d9c7a8;
+  --accent-dim: rgba(197, 170, 130, 0.15);
+  --ocean: #38bdf8;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-satoshi), sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection */
+::selection {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm
+           bg-sand-400 text-ink-950 hover:bg-sand-300
+           transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm
+           text-sand-300 hover:bg-ink-800 hover:text-sand-200
+           transition-all duration-200 active:scale-95;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm
+           text-red-400 hover:bg-red-950/40
+           transition-all duration-200 active:scale-95;
+  }
+
+  .card {
+    @apply bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl;
+  }
+
+  .input {
+    @apply w-full px-4 py-2.5 rounded-xl bg-ink-900 border border-[var(--border)]
+           text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]
+           focus:border-sand-500 focus:outline-none
+           transition-colors duration-150;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-[var(--text-secondary)] mb-1.5 tracking-wide uppercase;
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-semibold tracking-tight text-[var(--text-primary)];
+  }
+}

@@ -1,0 +1,168 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  avatar       String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  ownedTrips       Trip[]           @relation("TripOwner")
+  memberships      TripMember[]
+  itineraryItems   ItineraryItem[]
+  messages         Message[]
+  suggestions      Suggestion[]
+  votes            Vote[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Trip {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  destination String?
+  startDate   DateTime?
+  endDate     DateTime?
+  coverImage  String?
+  inviteCode  String   @unique @default(uuid())
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  owner          User            @relation("TripOwner", fields: [ownerId], references: [id])
+  members        TripMember[]
+  itineraryItems ItineraryItem[]
+  messages       Message[]
+  suggestions    Suggestion[]
+  notifications  Notification[]
+
+  @@map("trips")
+}
+
+model TripMember {
+  id       String   @id @default(uuid())
+  userId   String
+  tripId   String
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tripId])
+  @@map("trip_members")
+}
+
+enum MemberRole {
+  OWNER
+  EDITOR
+  MEMBER
+}
+
+model ItineraryItem {
+  id          String    @id @default(uuid())
+  tripId      String
+  createdById String
+  title       String
+  location    String?
+  lat         Float?
+  lng         Float?
+  placeId     String?
+  date        DateTime?
+  startTime   String?
+  endTime     String?
+  notes       String?
+  order       Int       @default(0)
+  dayIndex    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  trip      Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@map("itinerary_items")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("messages")
+}
+
+model Suggestion {
+  id          String   @id @default(uuid())
+  tripId      String
+  userId      String
+  title       String
+  location    String?
+  lat         Float?
+  lng         Float?
+  placeId     String?
+  description String?
+  score       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id])
+  votes Vote[]
+
+  @@map("suggestions")
+}
+
+model Vote {
+  id           String   @id @default(uuid())
+  suggestionId String
+  userId       String
+  value        Int      // +1 or -1
+  createdAt    DateTime @default(now())
+
+  suggestion Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@unique([suggestionId, userId])
+  @@map("votes")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  tripId    String?
+  type      NotificationType
+  message   String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  ACTIVITY_ADDED
+  ITINERARY_EDITED
+  NEW_MESSAGE
+  MEMBER_JOINED
+}
