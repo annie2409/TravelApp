@@ -14,6 +14,7 @@ entry here. See [`../AGENTS.md` §6](../AGENTS.md#6-change-log-workflow-mandator
 | [0004](./0004-agents-md-and-gitignore.md) | 2026-05-10 | AGENTS.md + comprehensive root .gitignore | docs / infra |
 | [0005](./0005-rename-agent-md-to-agents-md.md) | 2026-05-10 | Rename Agent.md → AGENTS.md (single source of truth) | docs / refactor |
 | [0006](./0006-cicd-uplift.md) | 2026-05-10 | CI/CD uplift: split test stages, security scans, immutable releases, CI_CD.md | infra / docs |
+| [0007](./0007-architecture-cicd-section.md) | 2026-05-10 | Architecture.md §5.6: envisioned CI/CD pipeline + per-step purpose | docs |
 
 ---
 

@@ -324,19 +324,61 @@ backend and frontend to keep mental overhead low.
 
 ### 5.6 CI/CD
 
-See `.github/workflows/` :
-- `backend-ci.yml` — install, prisma generate, lint, typecheck, test (with Postgres service), build, docker build (no push on PRs).
-- `frontend-ci.yml` — install, lint, typecheck, test, `next build`, docker build.
-- `deploy.yml` — `workflow_dispatch` with `environment` input. Stub steps for: build & push image to a registry, then deploy (kubectl / fly.io / ECS — choose your platform).
+> **System-level vision** — for the full design (philosophy, fail policies,
+> trade-offs, ops runbook) see [`CI_CD.md`](./CI_CD.md). Workflow files
+> live in [`.github/workflows/`](./.github/workflows/).
 
-CI best practices applied:
+#### Envisioned ideal pipeline
+
+```mermaid
+flowchart LR
+    DEV([Commit / PR]) --> S1[1. Lint + Typecheck]
+    S1 --> S2[2. Unit Tests]
+    S1 --> S6[6. SAST<br/>CodeQL]
+    S1 --> S7[7. SCA<br/>Dep-Review · audit · Trivy]
+    S2 --> S3[3. Integration Tests<br/>Postgres service]
+    S3 --> S4[4. Build]
+    S4 --> S5[5. Container Build]
+    S5 --> M{Merge to main?}
+    S6 --> M
+    S7 --> M
+    M -- tag v*.*.* --> S8[8. Release<br/>immutable images + digest]
+    S8 --> S9[9. Deploy<br/>env-protected approval]
+    S9 --> S10[10. Smoke Test]
+    S10 -- fail --> S11[11. Rollback]
+    S10 -- pass --> S12[12. Observe<br/>logs · metrics · DORA]
+```
+
+#### Step-by-step purpose
+
+Status legend: ✅ implemented · 🟡 partial · ⏳ planned (see [`CI_CD.md` §8](./CI_CD.md#8-implemented-now-vs-roadmap)).
+
+| # | Step | Purpose (≤ 2 sentences) | Trigger | Gate | Status | Tool |
+|---|---|---|---|---|---|---|
+| 1 | **Lint + Typecheck** | Catch style/type bugs in < 60 s so the PR check is visible before tests start. | PR + push | Blocks all downstream jobs in same workflow | ✅ | `tsc --noEmit`, `next lint` |
+| 2 | **Unit Tests** | Verify route handlers, services, and components in isolation with mocked deps; produce coverage. | PR + push | Blocks build & integration | ✅ | Jest + Supertest + RTL |
+| 3 | **Integration Tests** | Run handlers against a real Postgres service container reset to a known state, proving SQL/Prisma layers work end-to-end. | PR + push (backend only) | Blocks build | 🟡 (DB pipeline live; tests TBD) | `prisma migrate reset` + Jest |
+| 4 | **Build** | Produce reproducible artifacts (`tsc → dist`, `next build`); fails on syntax/type drift not caught earlier. | After tests | Blocks container build | ✅ | tsc, Next.js |
+| 5 | **Container Build** | Validate the production Dockerfile and warm the GHA layer cache; **no push on PR** to keep PR runs side-effect-free. | After build | Blocks PR merge | ✅ | `docker/build-push-action` |
+| 6 | **SAST** | Find injection / unsafe-deserialization / taint flows in source. SARIF results land in *Security → Code scanning*. | PR + push + weekly cron | Blocks PR | ✅ | CodeQL `security-extended` |
+| 7 | **SCA** | Catch CVEs and disallowed licences in third-party deps; PR-time diff check + lockfile + filesystem scan. | PR + push | PR = warn / `main` = block | ✅ | Dependency Review, `npm audit`, Trivy |
+| 8 | **Release** | Cut an immutable, versioned artifact: tag pushes verify ancestry on `main`, then publish `:semver` + `:sha` images with a captured digest. | Tag `v*.*.*` push | Blocks deploy if missing | ✅ | `release.yml` → GHCR |
+| 9 | **Deploy** | Roll a chosen image into a chosen environment behind required approvals (production needs a named reviewer). | `workflow_dispatch` | Production approval rule | 🟡 (workflow + envs ready, target stub) | `deploy.yml` + GitHub Environments |
+| 10 | **Smoke Test** | Hit a known-good endpoint after deploy to fail fast on a bad release before user traffic notices. | After deploy | Triggers rollback path | 🟡 (placeholder curl) | `curl --retry` (planned: synthetic check) |
+| 11 | **Rollback** | Reverse a failed deploy by re-deploying the previous image SHA or invoking the platform's native rollback. | On smoke fail | Restores last-known-good | ⏳ (manual today) | `flyctl releases rollback` / `kubectl rollout undo` / equivalent |
+| 12 | **Observe** | Feed runtime signals (errors, latency, deploy markers, DORA metrics) back into the loop so the next cycle is faster. | Continuous | Surfaces incidents | ⏳ | Sentry + log aggregator + DORA exporter |
+
+#### CI best practices applied
+
 - **Path filters** so backend changes don't trigger the frontend pipeline and vice versa.
-- **Concurrency** group cancels superseded runs on the same ref.
-- **Node cache** keyed on the per-package `package-lock.json`.
-- **Fail-fast off** so we see all matrix failures at once.
-- **Postgres service container** for backend integration tests.
-- **Pinned action versions** (e.g. `actions/checkout@v4`).
-- **Least-privilege `GITHUB_TOKEN`** (`permissions:` block).
+- **Concurrency cancellation** for PR runs (`cancel-in-progress: true`); serial queue for `release.yml` and `deploy.yml`.
+- **Multi-layer cache**: npm via `setup-node`, Docker via `type=gha,mode=max`, Next.js incremental build via `actions/cache@v4`.
+- **Postgres service container** + `prisma migrate reset --force --skip-seed` for deterministic integration runs.
+- **Pinned action versions** (`@v4`, `@v6`); SHA-pinning + Dependabot is on the roadmap (`CI_CD.md §7`).
+- **Workflow-level `permissions: contents: read`**; jobs escalate explicitly (`packages: write`, `id-token: write`, `security-events: write`).
+- **No long-lived cloud credentials** in `deploy.yml` — OIDC federation is the mandated path when wired (`CI_CD.md §6`).
+
+> **What ties this back to SDLC** — see [`CI_CD.md` §4 *SDLC Mapping*](./CI_CD.md#4-sdlc-mapping) for how steps 1–12 above map to Plan / Code / Build / Test / Release / Deploy / Operate / Monitor and to DORA's four key metrics.
 
 ---
 
